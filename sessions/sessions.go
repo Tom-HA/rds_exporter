@@ -20,13 +20,13 @@ import (
 
 // Instance represents a single RDS instance information in runtime.
 type Instance struct {
-	Region                     string
-	Instance                   string
-	DisableBasicMetrics        bool
-	DisableEnhancedMetrics     bool
-	ResourceID                 string
-	Labels                     map[string]string
-	EnhancedMonitoringInterval time.Duration
+	Region                 string
+	Instance               string
+	DisableBasicMetrics    bool
+	DisableEnhancedMetrics bool
+	ResourceID             string
+	Labels                 map[string]string
+	MonitoringInterval     time.Duration
 }
 
 func (i Instance) String() string {
@@ -61,6 +61,7 @@ func New(instances []config.Instance, client *http.Client, logger log.Logger, tr
 				Labels:                 instance.Labels,
 				DisableBasicMetrics:    instance.DisableBasicMetrics,
 				DisableEnhancedMetrics: instance.DisableEnhancedMetrics,
+				MonitoringInterval:     time.Duration(instance.MonitoringInterval),
 			})
 			continue
 		}
@@ -107,12 +108,13 @@ func New(instances []config.Instance, client *http.Client, logger log.Logger, tr
 			Labels:                 instance.Labels,
 			DisableBasicMetrics:    instance.DisableBasicMetrics,
 			DisableEnhancedMetrics: instance.DisableEnhancedMetrics,
+			MonitoringInterval:     time.Duration(instance.MonitoringInterval),
 		})
 	}
 
 	// add resource ID to all instances
-	for session, instances := range res.sessions {
-		svc := rds.New(session)
+	for sess, instances := range res.sessions {
+		svc := rds.New(sess)
 		var marker *string
 		for {
 			output, err := svc.DescribeDBInstances(&rds.DescribeDBInstancesInput{
@@ -126,8 +128,12 @@ func New(instances []config.Instance, client *http.Client, logger log.Logger, tr
 			for _, dbInstance := range output.DBInstances {
 				for i, instance := range instances {
 					if *dbInstance.DBInstanceIdentifier == instance.Instance {
+						if instance.MonitoringInterval > 0 {
+							instances[i].MonitoringInterval = instance.MonitoringInterval * time.Second
+						} else {
+							instances[i].MonitoringInterval = time.Duration(*dbInstance.MonitoringInterval) * time.Second
+						}
 						instances[i].ResourceID = *dbInstance.DbiResourceId
-						instances[i].EnhancedMonitoringInterval = time.Duration(*dbInstance.MonitoringInterval) * time.Second
 					}
 				}
 			}
@@ -138,7 +144,7 @@ func New(instances []config.Instance, client *http.Client, logger log.Logger, tr
 	}
 
 	// remove instances without resource ID
-	for session, instances := range res.sessions {
+	for sess, instances := range res.sessions {
 		newInstances := make([]Instance, 0, len(instances))
 		for _, instance := range instances {
 			if instance.ResourceID == "" {
@@ -147,7 +153,7 @@ func New(instances []config.Instance, client *http.Client, logger log.Logger, tr
 			}
 			newInstances = append(newInstances, instance)
 		}
-		res.sessions[session] = newInstances
+		res.sessions[sess] = newInstances
 	}
 
 	// remove sessions without instances
@@ -161,7 +167,7 @@ func New(instances []config.Instance, client *http.Client, logger log.Logger, tr
 	fmt.Fprintf(w, "Region\tInstance\tResource ID\tInterval\n")
 	for _, instances := range res.sessions {
 		for _, instance := range instances {
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", instance.Region, instance.Instance, instance.ResourceID, instance.EnhancedMonitoringInterval)
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", instance.Region, instance.Instance, instance.ResourceID, instance.MonitoringInterval)
 		}
 	}
 	_ = w.Flush()

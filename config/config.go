@@ -1,7 +1,7 @@
 package config
 
 import (
-	"io/ioutil"
+	"os"
 
 	"gopkg.in/yaml.v2"
 )
@@ -25,7 +25,8 @@ type Instance struct {
 	AWSRoleArn             string            `yaml:"aws_role_arn"`   // may be empty
 	DisableBasicMetrics    bool              `yaml:"disable_basic_metrics"`
 	DisableEnhancedMetrics bool              `yaml:"disable_enhanced_metrics"`
-	Labels                 map[string]string `yaml:"labels"` // may be empty
+	Labels                 map[string]string `yaml:"labels"`              // may be empty
+	MonitoringInterval     int               `yaml:"monitoring_interval"` // may be empty
 
 	// TODO Type InstanceType `yaml:"type"` // may be empty for old pmm-managed
 }
@@ -46,7 +47,7 @@ type Config struct {
 
 // Load loads configuration from file.
 func Load(filename string) (*Config, error) {
-	b, err := ioutil.ReadFile(filename) //nolint:gosec
+	b, err := os.ReadFile(filename) //nolint:gosec
 	if err != nil {
 		return nil, err
 	}
